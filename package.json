@@ -61,6 +61,7 @@
     "audio-decode": "^2.2.3",
     "axios": "^1.7.9",
     "baileys": "github:WhiskeySockets/Baileys",
+    "baileys-antiban": "^2.1.0",
     "class-validator": "^0.14.1",
     "compression": "^1.7.5",
     "cors": "^2.8.5",

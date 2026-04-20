@@ -79,6 +79,7 @@ import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import { Boom } from '@hapi/boom';
 import { createId as cuid } from '@paralleldrive/cuid2';
 import { Instance, Message } from '@prisma/client';
+import { buildAntibanConfig, isAntibanEnabledFor } from '@utils/antiban';
 import { createJid } from '@utils/createJid';
 import { fetchLatestWaWebVersion } from '@utils/fetchLatestWaWebVersion';
 import { makeProxyAgent } from '@utils/makeProxyAgent';
@@ -129,6 +130,7 @@ import makeWASocket, {
 } from 'baileys';
 import { Label } from 'baileys/lib/Types/Label';
 import { LabelAssociation } from 'baileys/lib/Types/LabelAssociation';
+import { wrapSocket } from 'baileys-antiban';
 import { spawn } from 'child_process';
 import { isArray, isBase64, isURL } from 'class-validator';
 import { randomBytes } from 'crypto';
@@ -662,7 +664,13 @@ export class BaileysStartupService extends ChannelStartupService {
 
     this.endSession = false;
 
-    this.client = makeWASocket(socketConfig);
+    const rawClient = makeWASocket(socketConfig);
+    if (isAntibanEnabledFor(this.instanceName)) {
+      this.logger.info(`[antiban] enabled for instance "${this.instanceName}"`);
+      this.client = wrapSocket(rawClient, buildAntibanConfig(this.instanceName)) as unknown as typeof rawClient;
+    } else {
+      this.client = rawClient;
+    }
 
     if (this.localSettings.wavoipToken && this.localSettings.wavoipToken.length > 0) {
       useVoiceCallsBaileys(this.localSettings.wavoipToken, this.client, this.connectionStatus.state as any, true);

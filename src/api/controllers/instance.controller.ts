@@ -367,6 +367,22 @@ export class InstanceController {
     };
   }
 
+  public async antibanStats({ instanceName }: InstanceDto) {
+    const wa: any = this.waMonitor.waInstances[instanceName];
+    if (!wa) {
+      return { instanceName, enabled: false, reason: 'instance not found' };
+    }
+    const antiban = wa?.client?.antiban;
+    if (!antiban || typeof antiban.getStats !== 'function') {
+      return { instanceName, enabled: false, reason: 'antiban wrapper not active' };
+    }
+    try {
+      return { instanceName, enabled: true, stats: antiban.getStats() };
+    } catch (err: any) {
+      return { instanceName, enabled: true, error: err?.message || String(err) };
+    }
+  }
+
   public async fetchInstances({ instanceName, instanceId, number }: InstanceDto, key: string) {
     const env = this.configService.get<Auth>('AUTHENTICATION').API_KEY;
 

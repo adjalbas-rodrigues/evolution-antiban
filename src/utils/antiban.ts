@@ -54,6 +54,14 @@ export function buildAntibanConfig(instanceName: string): AntiBanConfig {
       canonicalJidNormalization: true,
       healthMonitoring: true,
     },
+    lidResolver: {
+      canonical: 'pn',
+      maxEntries: 10_000,
+    },
+    jidCanonicalizer: {
+      enabled: true,
+      canonical: 'pn',
+    },
     health: {
       autoPauseAt: (process.env.ANTIBAN_AUTOPAUSE_AT as 'low' | 'medium' | 'high' | 'critical') || 'high',
       onRiskChange: (status) => {

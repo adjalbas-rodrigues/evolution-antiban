@@ -534,6 +534,8 @@ export class ChannelStartupService {
 
     const cleanedMessage = { ...message };
 
+    if (!cleanedMessage.message) return cleanedMessage;
+
     const mediaUrl = cleanedMessage.message.mediaUrl;
 
     delete cleanedMessage.message.base64;

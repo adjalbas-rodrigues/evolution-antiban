@@ -669,6 +669,35 @@ export class BaileysStartupService extends ChannelStartupService {
       this.logger.info(`[antiban] enabled for instance "${this.instanceName}"`);
       const { wrapSocket } = await import('baileys-antiban');
       this.client = wrapSocket(rawClient, buildAntibanConfig(this.instanceName)) as unknown as typeof rawClient;
+
+      // Patch: canonicalize JIDs (LID → PN) before they reach antiban's trackers
+      // so the same contact isn't counted twice in replyRatio.
+      try {
+        const antiban: any = (this.client as any).antiban;
+        const resolver: any = antiban?.lidResolver;
+        const lidCache = this.lidPnCache;
+        if (antiban && resolver?.resolveCanonical) {
+          const canonicalize = (jid: string | undefined | null): string | undefined | null => {
+            if (!jid || !jid.endsWith?.('@lid')) return jid;
+            return lidCache.get(jid) || resolver.resolveCanonical(jid) || jid;
+          };
+          if (typeof antiban.onIncomingMessage === 'function') {
+            const orig = antiban.onIncomingMessage.bind(antiban);
+            antiban.onIncomingMessage = (jid: string, text?: string) => orig(canonicalize(jid), text);
+          }
+          if (typeof antiban.beforeSend === 'function') {
+            const orig = antiban.beforeSend.bind(antiban);
+            antiban.beforeSend = (recipient: string, content?: string) => orig(canonicalize(recipient), content);
+          }
+          if (typeof antiban.afterSend === 'function') {
+            const orig = antiban.afterSend.bind(antiban);
+            antiban.afterSend = (recipient: string, content?: string) => orig(canonicalize(recipient), content);
+          }
+          this.logger.info(`[antiban] JID canonicalization patch applied for "${this.instanceName}"`);
+        }
+      } catch (patchErr: any) {
+        this.logger.warn?.(`[antiban] patch failed: ${patchErr?.message || patchErr}`);
+      }
     } else {
       this.client = rawClient;
     }

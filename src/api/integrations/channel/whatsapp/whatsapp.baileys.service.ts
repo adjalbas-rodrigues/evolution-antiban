@@ -236,6 +236,7 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   private authStateProvider: AuthStateProvider;
+  private lidPnCache: Map<string, string> = new Map();
   private readonly msgRetryCounterCache: CacheStore = new NodeCache();
   private readonly userDevicesCache: CacheStore = new NodeCache({ stdTTL: 300000, useClones: false });
   private endSession = false;
@@ -677,6 +678,28 @@ export class BaileysStartupService extends ChannelStartupService {
     }
 
     this.eventHandler();
+
+    // Learn LID↔PN mapping from raw message node attributes (sender_pn / peer_recipient_pn / recipient_pn)
+    this.client.ws.on('CB:message', (node: any) => {
+      try {
+        const attrs = node?.attrs || {};
+        const pairs: Array<[string, string]> = [];
+        if (attrs.from?.endsWith?.('@lid') && attrs.sender_pn?.endsWith?.('@s.whatsapp.net')) {
+          pairs.push([attrs.from, attrs.sender_pn]);
+        }
+        if (attrs.recipient?.endsWith?.('@lid') && attrs.peer_recipient_pn?.endsWith?.('@s.whatsapp.net')) {
+          pairs.push([attrs.recipient, attrs.peer_recipient_pn]);
+        }
+        if (attrs.participant?.endsWith?.('@lid') && attrs.participant_pn?.endsWith?.('@s.whatsapp.net')) {
+          pairs.push([attrs.participant, attrs.participant_pn]);
+        }
+        const resolver = (this.client as any)?.antiban?.lidResolver;
+        if (resolver?.learn) {
+          for (const [lid, pn] of pairs) resolver.learn({ lid, pn });
+        }
+        for (const [lid, pn] of pairs) this.lidPnCache.set(lid, pn);
+      } catch (_e) {}
+    });
 
     this.client.ws.on('CB:call', (packet) => {
       console.log('CB:call', packet);
@@ -4264,13 +4287,15 @@ export class BaileysStartupService extends ChannelStartupService {
     const enrichedKey: any = { ...message.key };
     const rawJid = enrichedKey.remoteJid;
     if (rawJid && rawJid.endsWith('@lid') && !enrichedKey.remoteJidAlt) {
-      const resolver = (this.client as any)?.antiban?.lidResolver;
-      if (resolver?.resolveCanonical) {
-        const canonical = resolver.resolveCanonical(rawJid);
-        if (canonical && canonical !== rawJid) {
-          enrichedKey.remoteJidAlt = canonical;
+      let canonical: string | null = this.lidPnCache.get(rawJid) || null;
+      if (!canonical) {
+        const resolver = (this.client as any)?.antiban?.lidResolver;
+        if (resolver?.resolveCanonical) {
+          const resolved = resolver.resolveCanonical(rawJid);
+          if (resolved && resolved !== rawJid) canonical = resolved;
         }
       }
+      if (canonical) enrichedKey.remoteJidAlt = canonical;
     }
 
     const messageRaw = {

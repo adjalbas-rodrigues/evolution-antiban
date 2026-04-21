@@ -4272,14 +4272,9 @@ export class BaileysStartupService extends ChannelStartupService {
         }
       }
     }
-    const pnJid = enrichedKey.remoteJidAlt?.endsWith('@s.whatsapp.net')
-      ? enrichedKey.remoteJidAlt
-      : (rawJid?.endsWith('@s.whatsapp.net') ? rawJid : null);
-    const phone = pnJid ? pnJid.split('@')[0] : null;
 
     const messageRaw = {
       key: enrichedKey,
-      phone,
       pushName:
         message.pushName ||
         (message.key.fromMe

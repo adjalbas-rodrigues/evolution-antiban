@@ -4261,8 +4261,25 @@ export class BaileysStartupService extends ChannelStartupService {
     const contentType = getContentType(message.message);
     const contentMsg = message?.message[contentType] as any;
 
+    const enrichedKey: any = { ...message.key };
+    const rawJid = enrichedKey.remoteJid;
+    if (rawJid && rawJid.endsWith('@lid') && !enrichedKey.remoteJidAlt) {
+      const resolver = (this.client as any)?.antiban?.lidResolver;
+      if (resolver?.resolveCanonical) {
+        const canonical = resolver.resolveCanonical(rawJid);
+        if (canonical && canonical !== rawJid) {
+          enrichedKey.remoteJidAlt = canonical;
+        }
+      }
+    }
+    const pnJid = enrichedKey.remoteJidAlt?.endsWith('@s.whatsapp.net')
+      ? enrichedKey.remoteJidAlt
+      : (rawJid?.endsWith('@s.whatsapp.net') ? rawJid : null);
+    const phone = pnJid ? pnJid.split('@')[0] : null;
+
     const messageRaw = {
-      key: message.key,
+      key: enrichedKey,
+      phone,
       pushName:
         message.pushName ||
         (message.key.fromMe

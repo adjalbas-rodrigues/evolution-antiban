@@ -130,7 +130,6 @@ import makeWASocket, {
 } from 'baileys';
 import { Label } from 'baileys/lib/Types/Label';
 import { LabelAssociation } from 'baileys/lib/Types/LabelAssociation';
-import { wrapSocket } from 'baileys-antiban';
 import { spawn } from 'child_process';
 import { isArray, isBase64, isURL } from 'class-validator';
 import { randomBytes } from 'crypto';
@@ -667,6 +666,7 @@ export class BaileysStartupService extends ChannelStartupService {
     const rawClient = makeWASocket(socketConfig);
     if (isAntibanEnabledFor(this.instanceName)) {
       this.logger.info(`[antiban] enabled for instance "${this.instanceName}"`);
+      const { wrapSocket } = await import('baileys-antiban');
       this.client = wrapSocket(rawClient, buildAntibanConfig(this.instanceName)) as unknown as typeof rawClient;
     } else {
       this.client = rawClient;

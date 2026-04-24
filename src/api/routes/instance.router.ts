@@ -64,6 +64,16 @@ export class InstanceRouter extends RouterBroker {
 
         return res.status(HttpStatus.OK).json(response);
       })
+      .post(this.routerPath('antibanWarmup'), ...guards, async (req, res) => {
+        const response = await this.dataValidate<any>({
+          request: req,
+          schema: null,
+          ClassRef: InstanceDto,
+          execute: (instance, data) => instanceController.antibanSetWarmup(instance, data || {}),
+        });
+
+        return res.status(HttpStatus.OK).json(response);
+      })
       .get(this.routerPath('fetchInstances', false), ...guards, async (req, res) => {
         const key = req.get('apikey');
 

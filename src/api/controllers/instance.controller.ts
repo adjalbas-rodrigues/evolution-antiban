@@ -383,6 +383,48 @@ export class InstanceController {
     }
   }
 
+  public async antibanSetWarmup(
+    { instanceName }: InstanceDto,
+    data: { day?: number; startedAt?: number; graduated?: boolean },
+  ) {
+    const wa: any = this.waMonitor.waInstances[instanceName];
+    if (!wa) throw new BadRequestException('Instance not found');
+    const antiban = wa?.client?.antiban;
+    if (!antiban?.warmUp) throw new BadRequestException('Antiban wrapper not active on this instance');
+
+    let startedAt: number;
+    if (typeof data.startedAt === 'number') {
+      startedAt = data.startedAt;
+    } else if (typeof data.day === 'number') {
+      if (data.day < 1) throw new BadRequestException('day must be >= 1');
+      // day N = startedAt set to (N-1) * 86400000 ms in the past
+      startedAt = Date.now() - (data.day - 1) * 86400000;
+    } else {
+      throw new BadRequestException('Provide either startedAt (ms epoch) or day (>= 1)');
+    }
+
+    const previous = antiban.warmUp.state || {};
+    antiban.warmUp.state = {
+      startedAt,
+      lastActiveAt: Date.now(),
+      dailyCounts: Array.isArray(previous.dailyCounts) ? previous.dailyCounts : [],
+      graduated: Boolean(data.graduated),
+    };
+
+    // Persist immediately so a restart preserves the manual override.
+    try {
+      await this.baileysCache.set(`antiban:warmup:${instanceName}`, antiban.warmUp.state, 30 * 24 * 60 * 60);
+    } catch (e: any) {
+      this.logger.warn(`[antiban] persist after setWarmup failed: ${e?.message || e}`);
+    }
+
+    return {
+      instanceName,
+      warmUp: antiban.warmUp.getStatus(),
+      state: antiban.warmUp.state,
+    };
+  }
+
   public async fetchInstances({ instanceName, instanceId, number }: InstanceDto, key: string) {
     const env = this.configService.get<Auth>('AUTHENTICATION').API_KEY;
 

@@ -668,7 +668,58 @@ export class BaileysStartupService extends ChannelStartupService {
     if (isAntibanEnabledFor(this.instanceName)) {
       this.logger.info(`[antiban] enabled for instance "${this.instanceName}"`);
       const { wrapSocket } = await import('baileys-antiban');
-      this.client = wrapSocket(rawClient, buildAntibanConfig(this.instanceName)) as unknown as typeof rawClient;
+
+      // Load persisted warm-up state so the counter survives container restarts.
+      const warmUpCacheKey = `antiban:warmup:${this.instanceName}`;
+      let restoredWarmUpState: any = undefined;
+      try {
+        const cached = await this.baileysCache.get(warmUpCacheKey);
+        if (cached && typeof cached === 'object' && typeof cached.startedAt === 'number') {
+          restoredWarmUpState = cached;
+          const days = Math.floor((Date.now() - cached.startedAt) / 86400000);
+          this.logger.info(
+            `[antiban] warm-up state restored for "${this.instanceName}" (day ${days + 1}, startedAt=${new Date(
+              cached.startedAt,
+            ).toISOString()})`,
+          );
+        }
+      } catch (loadErr: any) {
+        this.logger.warn?.(`[antiban] warm-up state load failed: ${loadErr?.message || loadErr}`);
+      }
+
+      this.client = wrapSocket(
+        rawClient,
+        buildAntibanConfig(this.instanceName),
+        restoredWarmUpState,
+      ) as unknown as typeof rawClient;
+
+      // Persist warm-up state periodically (and on disconnect/shutdown) so it
+      // survives container restarts / redeploys. TTL 30 days — longer than
+      // the max warm-up period.
+      const WARMUP_TTL_SECONDS = 30 * 24 * 60 * 60;
+      const persistWarmUp = async () => {
+        try {
+          const ab: any = (this.client as any)?.antiban;
+          if (ab?.exportWarmUpState) {
+            const state = ab.exportWarmUpState();
+            if (state?.startedAt) {
+              await this.baileysCache.set(warmUpCacheKey, state, WARMUP_TTL_SECONDS);
+            }
+          }
+        } catch (e: any) {
+          // swallow — persistence failures must never break the send path
+          this.logger.warn?.(`[antiban] warm-up persist failed: ${e?.message || e}`);
+        }
+      };
+      const persistInterval = setInterval(persistWarmUp, 60_000);
+      // Clear the interval when the socket closes to avoid leaking timers.
+      rawClient.ev?.on?.('connection.update', (u: any) => {
+        if (u.connection === 'close') {
+          clearInterval(persistInterval);
+          // best-effort final save
+          persistWarmUp().catch(() => {});
+        }
+      });
 
       // Patch: canonicalize JIDs (LID → PN) before they reach antiban's trackers
       // so the same contact isn't counted twice in replyRatio.
